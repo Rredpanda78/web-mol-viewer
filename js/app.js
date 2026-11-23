@@ -253,25 +253,28 @@
     if ($('hide-h').checked) viewer.setStyle({ elem: 'H' }, {});
   }
 
-  function label(text, pos, color, size) {
-    viewer.addLabel(text, { position: pos, fontSize: size || lsize() + 2, fontColor: color || (dark() ? 'white' : 'black'), showBackground: true,
+  function label(text, pos, color, size, bg) {
+    viewer.addLabel(text, { position: pos, fontSize: size || lsize() + 2, fontColor: color || (dark() ? 'white' : 'black'), showBackground: bg !== false,
       backgroundColor: dark() ? 'black' : 'white', backgroundOpacity: 0.65, inFront: true, alignment: 'center' });
   }
   function dashed(a, b, color) {
     viewer.addCylinder({ start: { x: a.x, y: a.y, z: a.z }, end: { x: b.x, y: b.y, z: b.z }, radius: 0.045, dashed: true, color, fromCap: 1, toCap: 1 });
   }
 
+  const JMOL = { H: 0xffffff, C: 0x909090, N: 0x3050f8, O: 0xff0d0d, F: 0x90e050, P: 0xff8000, S: 0xffff30, Cl: 0x1ff01f, Br: 0xa62929 };
+  const lum = c => (0.299 * ((c >> 16) & 255) + 0.587 * ((c >> 8) & 255) + 0.114 * (c & 255)) / 255;
   function drawLabels() {
     const m = $('labels').value; const show = qShow(); const Q = show === 'labels' || show === 'both' ? activeQ() : null;
     if (m === 'none' && !Q) return;
     const hideH = $('hide-h').checked;
     if (vis.length > 400) { $('hover').textContent = 'Labels are switched off above 400 atoms shown.'; return; }
+    const bg = $('label-bg').checked; const QC = show === 'colour' || show === 'both' ? activeQ() : null; const sc = QC ? qScale(QC) : 1;      // without a background the text is white on dark atoms, black on light ones
     vis.forEach(a => {
       if (hideH && a.elem === 'H') return;
       const parts = [];
       if (m === 'index') parts.push(String(a.index + 1)); else if (m === 'both') parts.push(tag(a)); else if (m === 'elem' && a.elem !== 'C' && a.elem !== 'H') parts.push(a.elem);
       if (Q && Q[a.index] !== null && Q[a.index] !== undefined) parts.push(signed(Q[a.index], 3));
-      if (parts.length) label(parts.join(' '), a, null, lsize());
+      if (parts.length) label(parts.join(' '), a, bg ? null : (lum(QC ? qColour(QC[a.index], sc) : (JMOL[a.elem] || 0x909090)) < 0.55 ? 'white' : 'black'), lsize(), bg);
     });
   }
 
@@ -627,7 +630,7 @@
   window.addEventListener('drop', e => { e.preventDefault(); depth = 0; document.body.classList.remove('dragging'); if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
 
   let pend = null; const soon = () => { clearTimeout(pend); pend = setTimeout(() => render(false), 120); };
-  ['style', 'labels', 'label-size', 'hide-h', 'contacts', 'cutoff', 'solvent', 'near-r', 'q-set', 'q-show', 'q-scale', 'surf', 'surf-grad', 'surf-unit', 'surf-op', 'surf-min', 'surf-max'].forEach(id => {
+  ['style', 'labels', 'label-size', 'label-bg', 'hide-h', 'contacts', 'cutoff', 'solvent', 'near-r', 'q-set', 'q-show', 'q-scale', 'surf', 'surf-grad', 'surf-unit', 'surf-op', 'surf-min', 'surf-max'].forEach(id => {
     const el = $(id); if (!el) return;                                   // an older cached page may not have the newer controls
     el.onchange = soon;
     if (el.tagName === 'INPUT' && (el.type === 'number' || el.type === 'range')) el.oninput = soon;     // react while typing / dragging, not only on Enter
