@@ -20,14 +20,15 @@
       <h2>Files</h2>
       <label class="btn primary" for="file-input">Open files&hellip;</label>
       <input id="file-input" type="file" multiple hidden
-             accept=".xyz,.txyz,.arc,.pdb,.ent,.sdf,.mol,.mol2,.cif,.gro,.cube,.cub,.log,.out,.gjf,.com">
+             accept=".xyz,.txyz,.arc,.pdb,.ent,.sdf,.mol,.mol2,.pqr,.cif,.gro,.cube,.cub,.log,.out,.gjf,.com,.chg,.dcd,.csv,.xml,.itp,.top,.key,.prm,.txt,.dat">
       <div class="samples">Samples:
         <button class="link" data-sample="samples/water.xyz">water</button>
         <button class="link" data-sample="samples/ethanol.xyz">ethanol</button>
         <button class="link" data-sample="samples/ethanolamine_scan.xyz">scan (3 frames)</button>
       </div>
       <ul id="file-list"></ul>
-      <p class="hint" id="empty-hint">Supported: .xyz (multi-frame, Tinker), .pdb, .sdf/.mol, .mol2, .gro, .cif, .cube, Gaussian .log/.out (all optimisation steps) and .gjf/.com.</p>
+      <p class="hint" id="empty-hint">Structures: .xyz (multi-frame, Tinker), .pdb, .sdf/.mol, .mol2, .pqr, .gro, .cif, .cube, Gaussian .log/.out (all optimisation steps) and .gjf/.com.</p>
+      <p class="hint">Add to the selected structure: a trajectory (.dcd), an energy table (.csv) or charges (OpenMM .xml, GROMACS .itp, Tinker .key, .chg / one value per line).</p>
     </div>
     <div class="panel" id="info-panel">
       <h2>Info</h2>
@@ -37,13 +38,22 @@
   </aside>
 
   <section id="stage">
-    <div id="viewer"></div>
-    <div id="frame-bar" hidden>
-      <button id="fr-prev" title="Previous frame (←)">&#9664;</button>
-      <button id="fr-play" title="Play / pause">&#9654;</button>
-      <button id="fr-next" title="Next frame (→)">&#9654;&#9654;</button>
-      <input id="fr-slider" type="range" min="0" max="0" value="0">
-      <span id="fr-label"></span>
+    <div id="view-wrap">
+      <div id="viewer"></div>
+      <div id="frame-bar" hidden>
+        <button id="fr-prev" title="Previous frame (←)">&#9664;</button>
+        <button id="fr-play" title="Play / pause">&#9654;</button>
+        <button id="fr-next" title="Next frame (→)">&#9654;&#9654;</button>
+        <input id="fr-slider" type="range" min="0" max="0" value="0">
+        <span id="fr-label"></span>
+      </div>
+    </div>
+    <div id="plot-wrap" hidden>
+      <div id="plot-head">
+        <select id="plot-what" title="Quantity plotted against the frames"></select>
+        <span id="plot-read"></span>
+      </div>
+      <canvas id="plot" title="Click to jump to that frame"></canvas>
     </div>
     <div id="drop-overlay">Drop files to open</div>
   </section>
@@ -78,6 +88,28 @@
       </div>
     </div>
 
+    <div class="panel" id="traj-panel" hidden>
+      <h2>Frames / solvent</h2>
+      <div id="traj-info" class="hint"></div>
+      <div id="solvent-rows">
+        <label class="row">Show
+          <select id="solvent">
+            <option value="near">Solute + nearby water</option>
+            <option value="solute">Solute only</option>
+            <option value="all">Everything</option>
+          </select>
+        </label>
+        <label class="row">Water within (&Aring;)
+          <input id="near-r" type="number" min="2" max="12" step="0.5" value="3.5">
+        </label>
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="scan" title="Count the H···N/O contacts in every frame and plot them">Scan contacts</button>
+        <button class="btn" id="copy-scan" title="Copy one row per frame: time, energy, contact counts">Copy table</button>
+      </div>
+      <div id="scan-status" class="hint"></div>
+    </div>
+
     <div class="panel">
       <h2>Polar contacts</h2>
       <label class="check"><input type="checkbox" id="contacts"> Show H&middot;&middot;&middot;N/O contacts</label>
@@ -85,6 +117,32 @@
         <input id="cutoff" type="number" min="1.5" max="4" step="0.1" value="2.5">
       </label>
       <div id="contact-list" class="list"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Charges</h2>
+      <div id="q-info" class="hint">No charges. Drop a charge file while the structure is selected.</div>
+      <div id="q-rows" hidden>
+        <label class="row">Set
+          <select id="q-set"></select>
+        </label>
+        <label class="row">Show
+          <select id="q-show">
+            <option value="both">Labels + colour</option>
+            <option value="labels">Labels</option>
+            <option value="colour">Colour</option>
+            <option value="off">Off</option>
+          </select>
+        </label>
+        <label class="row">Colour scale &plusmn; (e)
+          <input id="q-scale" type="number" min="0.05" max="3" step="0.05" placeholder="auto">
+        </label>
+        <div id="q-legend" class="hint"></div>
+        <div class="btn-row">
+          <button class="btn" id="copy-q" title="Copy a table: atom, element, charge of every set">Copy table</button>
+          <button class="btn" id="clear-q">Remove charges</button>
+        </div>
+      </div>
     </div>
 
     <div class="panel">
@@ -106,6 +164,8 @@
 </main>
 
 <script src="js/parsers.js"></script>
+<script src="js/trajectory.js"></script>
+<script src="js/charges.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

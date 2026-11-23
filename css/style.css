@@ -67,3 +67,15 @@ body.dragging #drop-overlay { display: flex; }
   #stage { height: 60vh; order: -1; }
   aside { overflow: visible; }
 }
+
+/* viewer + plot stacked inside the stage */
+#stage { display: flex; flex-direction: column; }
+#view-wrap { position: relative; flex: 1; min-height: 0; }
+#plot-wrap { height: 190px; border-top: 1px solid var(--line); display: flex; flex-direction: column; background: var(--panel); }
+#plot-wrap[hidden] { display: none; }
+#plot-head { display: flex; align-items: center; gap: 10px; padding: 4px 10px 0; font-size: 12px; }
+#plot-head select { font: inherit; padding: 2px 4px; border: 1px solid var(--line); border-radius: 6px; }
+#plot-read { font-family: Consolas, monospace; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#plot { flex: 1; width: 100%; min-height: 0; cursor: crosshair; }
+#q-info, #scan-status, #traj-info { white-space: pre-wrap; }
+.row select { max-width: 160px; }

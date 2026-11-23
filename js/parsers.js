@@ -19,15 +19,19 @@ const MolParsers = (() => {
     while (i < L.length) {
       const n = parseInt(L[i].trim(), 10);
       if (!(n > 0)) { i++; continue; }
-      const atoms = [];
+      const atoms = []; const q = [];
       for (let k = i + 2; k < i + 2 + n && k < L.length; k++) {
         const p = L[k].trim().split(/\s+/);
         if (p.length < 4 || !isNum(p[1]) || !isNum(p[2]) || !isNum(p[3])) break;
         atoms.push({ el: isNum(p[0]) ? (SYM[parseInt(p[0], 10)] || 'X') : cleanEl(p[0]), x: +p[1], y: +p[2], z: +p[3] });
+        if (p.length === 5 && isNum(p[4])) q.push(+p[4]);       // "El x y z q": a charge column (Multiwfn .chg, DDEC6 xyz)
       }
-      if (atoms.length !== n) throw new Error('XYZ frame ' + (frames.length + 1) + ': expected ' + n + ' atoms, found ' + atoms.length);
+      if (atoms.length !== n) {
+        if (frames.length) break;                               // trailing text after the last frame
+        throw new Error('XYZ frame 1: expected ' + n + ' atoms, found ' + atoms.length);
+      }
       const comment = (L[i + 1] || '').trim();
-      frames.push({ data: xyzText(atoms, comment), format: 'xyz', comment, energy: null });
+      frames.push({ data: xyzText(atoms, comment), format: 'xyz', comment, energy: null, charges: q.length === n ? q : null });
       i += 2 + n;
     }
     if (!frames.length) throw new Error('No XYZ frames found');
@@ -48,14 +52,14 @@ const MolParsers = (() => {
       if (!(n > 0)) break;
       let k = i + 1;
       if (k < L.length && L[k].trim().split(/\s+/).length === 6 && L[k].trim().split(/\s+/).every(isNum)) k++;   // periodic box line
-      const atoms = [];
+      const atoms = []; const types = [];
       for (let j = k; j < k + n && j < L.length; j++) {
         const p = L[j].trim().split(/\s+/);
-        atoms.push({ el: cleanEl(p[1]), x: +p[2], y: +p[3], z: +p[4] });
+        atoms.push({ el: cleanEl(p[1]), x: +p[2], y: +p[3], z: +p[4] }); types.push(parseInt(p[5], 10));
       }
       if (atoms.length !== n) throw new Error('Tinker XYZ: expected ' + n + ' atoms');
       const comment = h.slice(1).join(' ');
-      frames.push({ data: xyzText(atoms, comment), format: 'xyz', comment, energy: null });
+      frames.push({ data: xyzText(atoms, comment), format: 'xyz', comment, energy: null, types });       // atom types: needed to read charges from a Tinker key
       i = k + n;
     }
     if (!frames.length) throw new Error('No Tinker frames found');
@@ -113,7 +117,13 @@ const MolParsers = (() => {
     return [{ data: xyzText(atoms, title.trim()), format: 'xyz', comment: title.trim(), energy: null }];
   }
 
-  const PASS = { pdb: 'pdb', ent: 'pdb', sdf: 'sdf', mol: 'sdf', mol2: 'mol2', cif: 'cif', gro: 'gro', cube: 'cube', cub: 'cube' };
+  /* Multiwfn .chg: "El x y z q" lines without a header -> XYZ text with the charge column kept */
+  function chgToXyz(text) {
+    const L = text.replace(/\r/g, '').split('\n').filter(l => l.trim());
+    return /^\s*\d+\s*$/.test(L[0] || '') ? text : L.length + '\ncharges\n' + L.join('\n') + '\n';
+  }
+
+  const PASS = { pdb: 'pdb', ent: 'pdb', sdf: 'sdf', mol: 'sdf', mol2: 'mol2', cif: 'cif', gro: 'gro', cube: 'cube', cub: 'cube', pqr: 'pqr' };
 
   /* Entry point: file name + text -> { kind, frames }. */
   function parse(name, text) {
@@ -122,6 +132,7 @@ const MolParsers = (() => {
     if (ext === 'gjf' || ext === 'com') return { kind: 'Gaussian input', frames: gaussianInputFrames(text) };
     if (ext === 'txyz' || ext === 'arc' || (ext === 'xyz' && looksLikeTinker(text))) return { kind: 'Tinker XYZ', frames: tinkerFrames(text) };
     if (ext === 'xyz') return { kind: 'XYZ', frames: xyzFrames(text) };
+    if (ext === 'chg') return { kind: 'XYZ + charges', frames: xyzFrames(chgToXyz(text)) };
     if (PASS[ext]) return { kind: ext.toUpperCase(), frames: [{ data: text, format: PASS[ext], comment: '', energy: null }] };
     if (/^\s*\d+\s*$/.test(text.split('\n')[0] || '')) return { kind: 'XYZ', frames: xyzFrames(text) };     // unknown extension that looks like XYZ
     throw new Error('Unsupported file type: .' + ext);
