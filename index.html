@@ -40,6 +40,7 @@
   <section id="stage">
     <div id="view-wrap">
       <div id="viewer"></div>
+      <div id="esp-legend" hidden></div>
       <div id="frame-bar" hidden>
         <button id="fr-prev" title="Previous frame (←)">&#9664;</button>
         <button id="fr-play" title="Play / pause">&#9654;</button>
@@ -77,6 +78,9 @@
           <option value="index">Atom number</option>
           <option value="both">Element + number</option>
         </select>
+      </label>
+      <label class="row">Label size
+        <input id="label-size" type="number" min="6" max="40" step="1" value="14">
       </label>
       <label class="check"><input type="checkbox" id="hide-h"> Hide hydrogens</label>
       <label class="check"><input type="checkbox" id="dark"> Dark background</label>
@@ -143,6 +147,38 @@
           <button class="btn" id="clear-q">Remove charges</button>
         </div>
       </div>
+    </div>
+
+    <div class="panel">
+      <h2>ESP surface</h2>
+      <label class="row">Surface
+        <select id="surf">
+          <option value="off">Off</option>
+          <option value="VDW">van der Waals</option>
+          <option value="SAS">Solvent accessible</option>
+        </select>
+      </label>
+      <div id="surf-rows" hidden>
+        <label class="row">Colours
+          <select id="surf-grad">
+            <option value="rainbow">Rainbow (red − … blue +)</option>
+            <option value="rwb">Red – white – blue</option>
+          </select>
+        </label>
+        <label class="row">Unit
+          <select id="surf-unit">
+            <option value="kcal">kcal/mol</option>
+            <option value="kJ">kJ/mol</option>
+          </select>
+        </label>
+        <label class="row">Opacity
+          <input id="surf-op" type="range" min="0.3" max="1" step="0.05" value="0.8">
+        </label>
+        <label class="row">Range
+          <span><input id="surf-min" type="number" step="10" placeholder="min" class="narrow"> <input id="surf-max" type="number" step="10" placeholder="max" class="narrow"></span>
+        </label>
+      </div>
+      <div id="surf-info" class="hint"></div>
     </div>
 
     <div class="panel">

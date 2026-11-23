@@ -70,7 +70,8 @@ const MolCharges = (() => {
       if (t.atoms.length !== atoms.length) throw new Error(`Template ${t.name} has ${t.atoms.length} atoms, the structure has ${atoms.length}`);
       t.atoms.forEach((x, k) => { q[k] = x.q; elems[k] = x.el; }); used = [t.name];
     }
-    return { q, note: ['OpenMM XML, residue ' + used.join(', '), checkElements(q, atoms, elems, 'the XML')].filter(Boolean).join('. ') };
+    const mp = doc.querySelector('AmoebaMultipoleForce > Multipole') ? ' (multipole monopoles)' : '';
+    return { q, note: ['OpenMM XML' + mp + ', residue ' + used.join(', '), checkElements(q, atoms, elems, 'the XML')].filter(Boolean).join('. ') };
   }
 
   function fromGromacs(text, atoms) {

@@ -41,6 +41,7 @@
   const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 });
   const tag = a => a.elem + (a.index + 1);
   const dark = () => $('dark').checked;
+  const lsize = () => Math.max(6, Math.min(40, parseFloat($('label-size').value) || 14));      // atom / charge labels; distances are 2 pt larger
   const nF = e => (e ? (e.traj ? e.traj.nframes : e.frames.length) : 0);
   const signed = (v, d) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d);
 
@@ -162,6 +163,76 @@
     return rows.join('\n');
   }
 
+  /* ---------- electrostatic potential on the molecular surface (from the atomic charges) ---------- */
+  const VDW = { H: 1.2, C: 1.7, N: 1.55, O: 1.52, F: 1.47, P: 1.8, S: 1.8, Cl: 1.75, Br: 1.85 };
+  const COULOMB = { kcal: 332.0637, kJ: 1389.354 };                // energy of a +1 e probe charge, per (e / Å)
+  let surfTok = 0;
+  function drawSurface() {
+    const tok = ++surfTok; const leg = $('esp-legend'); leg.hidden = true; leg.innerHTML = '';
+    const on = !!cur && $('surf').value !== 'off'; $('surf-rows').hidden = !on; $('surf-info').textContent = '';
+    if (!on) return;
+    const Q = activeQ(); const T = cur.topo;
+    if (!Q) { $('surf-info').textContent = 'The surface is coloured by the potential of the atomic charges: load charges first (see Charges).'; return; }
+    const idx = T.solute.filter(i => Q[i] !== null && Q[i] !== undefined); const n = idx.length;
+    if (!n) return;
+    if (n > 500) { $('surf-info').textContent = 'ESP surface is limited to 500 charged atoms.'; return; }
+    const unit = $('surf-unit').value; const K = COULOMB[unit]; const type = $('surf').value; const probe = type === 'SAS' ? 1.4 : 0;
+    const ax = new Float64Array(n), ay = new Float64Array(n), az = new Float64Array(n), aq = new Float64Array(n), ar = new Float64Array(n);
+    idx.forEach((i, k) => { const a = atoms[i]; ax[k] = a.x; ay[k] = a.y; az[k] = a.z; aq[k] = Q[i]; ar[k] = (VDW[a.elem] || 1.7) + probe; });
+    const V = (x, y, z) => { let s = 0; for (let k = 0; k < n; k++) { const dx = x - ax[k], dy = y - ay[k], dz = z - az[k]; const r = Math.sqrt(dx * dx + dy * dy + dz * dz); s += aq[k] / (r < 0.6 ? 0.6 : r); } return K * s; };
+    let lo = Infinity, hi = -Infinity; const NP = 90;               // range: the potential on the surface itself (points on each atomic sphere that are outside the others)
+    for (let k = 0; k < n; k++) for (let p = 0; p < NP; p++) {
+      const ph = Math.acos(1 - 2 * (p + 0.5) / NP), th = Math.PI * (1 + Math.sqrt(5)) * p;
+      const x = ax[k] + ar[k] * Math.sin(ph) * Math.cos(th), y = ay[k] + ar[k] * Math.sin(ph) * Math.sin(th), z = az[k] + ar[k] * Math.cos(ph);
+      let inside = false;
+      for (let j = 0; j < n && !inside; j++) { if (j === k) continue; const dx = x - ax[j], dy = y - ay[j], dz = z - az[j]; if (dx * dx + dy * dy + dz * dz < ar[j] * ar[j]) inside = true; }
+      if (inside) continue; const v = V(x, y, z); if (v < lo) lo = v; if (v > hi) hi = v;
+    }
+    const rwb = $('surf-grad').value === 'rwb';
+    if (rwb) { const m = Math.max(Math.abs(lo), Math.abs(hi)); lo = -m; hi = m; }      // white = 0
+    const umin = parseFloat($('surf-min').value), umax = parseFloat($('surf-max').value);
+    if (!isNaN(umin)) lo = umin; if (!isNaN(umax)) hi = umax; if (!(hi > lo)) hi = lo + 1;
+    const mg = 2.4 + probe; let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    for (let k = 0; k < n; k++) { x0 = Math.min(x0, ax[k]); x1 = Math.max(x1, ax[k]); y0 = Math.min(y0, ay[k]); y1 = Math.max(y1, ay[k]); z0 = Math.min(z0, az[k]); z1 = Math.max(z1, az[k]); }
+    x0 -= mg; y0 -= mg; z0 -= mg; x1 += mg; y1 += mg; z1 += mg;
+    let h = 0.2, nx, ny, nz;                                         // 3Dmol reads the nearest grid point, so the grid has to be fine
+    for (;;) { nx = Math.ceil((x1 - x0) / h) + 1; ny = Math.ceil((y1 - y0) / h) + 1; nz = Math.ceil((z1 - z0) / h) + 1; if (nx * ny * nz * n <= 4e7) break; h *= 1.12; }
+    const data = new Float32Array(nx * ny * nz);
+    for (let ix = 0; ix < nx; ix++) for (let iy = 0; iy < ny; iy++) { const o = (ix * ny + iy) * nz; const x = x0 + ix * h, y = y0 + iy * h; for (let iz = 0; iz < nz; iz++) data[o + iz] = V(x, y, z0 + iz * h); }
+    const vd = new $3Dmol.VolumeData('', 'none'); vd.origin = { x: x0, y: y0, z: z0 }; vd.unit = { x: h, y: h, z: h }; vd.size = { x: nx, y: ny, z: nz }; vd.data = data;
+    const grad = rwb ? new $3Dmol.Gradient.RWB(lo, hi) : new $3Dmol.Gradient.ROYGB(lo, hi);
+    const pr = viewer.addSurface($3Dmol.SurfaceType[type], { opacity: parseFloat($('surf-op').value) || 0.8, voldata: vd, volscheme: grad }, { index: idx });
+    Promise.resolve(pr).then(id => { if (tok !== surfTok) { try { viewer.removeSurface(id); } catch (e) { /* already gone */ } } viewer.render(); });
+    const ttl = document.createElement('div'); ttl.className = 'ttl'; ttl.textContent = `ESP (${unit === 'kJ' ? 'kJ/mol' : 'kcal/mol'})`; leg.append(ttl);
+    for (let k = 0; k <= 10; k++) {                                  // legend: positive (blue) on top, as in GaussView-style pictures
+      const v = hi - (hi - lo) * k / 10; const row = document.createElement('div'); row.className = 'rowl';
+      const sw = document.createElement('span'); sw.className = 'sw'; const col = '#' + grad.valueToHex(v).toString(16).padStart(6, '0'); sw.style.background = col;
+      const tx = document.createElement('span'); tx.className = 'v'; tx.textContent = (v < 0 ? '−' : '') + Math.abs(v).toFixed(1); row.append(sw, tx); leg.append(row);
+    }
+    leg.hidden = false; leg.dataset.unit = unit;
+    const sel = $('q-set').value; const note = sel.startsWith('d') ? '' : ((cur.sets[+sel] || {}).note || '');
+    $('surf-info').textContent = 'Potential of the atomic point charges (energy of a +1 e probe) on the ' + (type === 'SAS' ? 'solvent-accessible' : 'van der Waals') + ' surface.'
+      + (sel.startsWith('d') ? ' Showing the difference between two charge sets.' : '')
+      + (/multipole|monopole/i.test(note) ? ' Multipole model: only the monopoles are used — atomic dipoles and quadrupoles are not included, so this is not the full model potential.' : '');
+  }
+
+  /* picture of the view with the ESP legend drawn in */
+  function savePNG() {
+    if (!cur) return; const name = cur.name.replace(/\.[^.]+$/, '') + '.png'; const uri = viewer.pngURI(); const leg = $('esp-legend');
+    if (leg.hidden) { download(name, uri); return; }
+    const img = new Image();
+    img.onload = () => {
+      const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height; const g = cv.getContext('2d'); g.drawImage(img, 0, 0);
+      const k = img.width / $('viewer').clientWidth; const rows = Array.from(leg.querySelectorAll('.rowl')); const x = 14 * k, rh = 17 * k; let y = 14 * k;
+      g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect(8 * k, 8 * k, 110 * k, (26 + rows.length * 17) * k);
+      g.textBaseline = 'middle'; g.fillStyle = '#1f283d'; g.font = `600 ${13 * k}px "Segoe UI", Arial, sans-serif`; g.fillText(leg.querySelector('.ttl').textContent, x, y + 6 * k); y += 18 * k;
+      g.font = `700 ${12 * k}px Consolas, "Courier New", monospace`;
+      rows.forEach(r => { g.fillStyle = r.querySelector('.sw').style.background; g.fillRect(x, y, 18 * k, rh); g.fillStyle = '#1f283d'; g.textAlign = 'right'; g.fillText(r.querySelector('.v').textContent, x + 96 * k, y + rh / 2); g.textAlign = 'left'; y += rh; });
+      download(name, cv.toDataURL('image/png'));
+    };
+    img.src = uri;
+  }
+
   /* ---------- drawing ---------- */
   function styleSpec(base, Q, sc) {
     const out = {};
@@ -183,7 +254,7 @@
   }
 
   function label(text, pos, color, size) {
-    viewer.addLabel(text, { position: pos, fontSize: size || 13, fontColor: color || (dark() ? 'white' : 'black'), showBackground: true,
+    viewer.addLabel(text, { position: pos, fontSize: size || lsize() + 2, fontColor: color || (dark() ? 'white' : 'black'), showBackground: true,
       backgroundColor: dark() ? 'black' : 'white', backgroundOpacity: 0.65, inFront: true, alignment: 'center' });
   }
   function dashed(a, b, color) {
@@ -200,7 +271,7 @@
       const parts = [];
       if (m === 'index') parts.push(String(a.index + 1)); else if (m === 'both') parts.push(tag(a)); else if (m === 'elem' && a.elem !== 'C' && a.elem !== 'H') parts.push(a.elem);
       if (Q && Q[a.index] !== null && Q[a.index] !== undefined) parts.push(signed(Q[a.index], 3));
-      if (parts.length) label(parts.join(' '), a, null, 11);
+      if (parts.length) label(parts.join(' '), a, null, lsize());
     });
   }
 
@@ -434,7 +505,7 @@
   }
 
   function render(resetView) {
-    viewer.removeAllModels(); viewer.removeAllShapes(); viewer.removeAllLabels();
+    viewer.removeAllModels(); viewer.removeAllShapes(); viewer.removeAllLabels(); viewer.removeAllSurfaces();
     atoms = []; vis = [];
     if (cur) {
       const f = cur.traj ? cur.frames[0] : cur.frames[cur.i];
@@ -442,7 +513,7 @@
       atoms = model.selectedAtoms({});
       const T = cur.topo || buildTopo(cur, atoms);
       if (cur.traj && cur.xyz && cur.xyz.x.length === atoms.length) { const X = cur.xyz; atoms.forEach((a, i) => { a.x = X.x[i]; a.y = X.y[i]; a.z = X.z[i]; }); }
-      else if (!cur.traj && f.charges && !cur.sets.some(s => s.fromFrame)) cur.sets.unshift({ name: cur.name, q: f.charges, note: 'Charge column of the structure file', fromFrame: true });
+      else if (!cur.traj && f.charges && !cur.sets.some(s => s.fromFrame)) cur.sets.unshift({ name: cur.name, q: f.charges, note: 'Charge column of the structure file' + ((f.comment || '').includes('| q:') ? ':' + f.comment.split('| q:')[1] : ''), fromFrame: true });
       vis = computeVisible();
       updateChargePanel();
       applyStyle();
@@ -451,9 +522,9 @@
       viewer.setHoverable({}, true,
         a => { $('hover').textContent = `${tag(a)}${a.resn ? ' ' + a.resn : ''}   x ${a.x.toFixed(3)}  y ${a.y.toFixed(3)}  z ${a.z.toFixed(3)}` + (Q && Q[a.index] !== null && Q[a.index] !== undefined ? `   q ${signed(Q[a.index], 4)}` : ''); },
         () => { $('hover').textContent = ''; });
-      drawLabels(); drawContacts(); drawMeasure();
+      drawLabels(); drawContacts(); drawMeasure(); drawSurface();
       if (resetView) viewer.zoomTo(T.hasSolvent ? { index: T.solute } : {});
-    } else { $('contact-list').textContent = ''; drawMeasure(); updateChargePanel(); }
+    } else { $('contact-list').textContent = ''; drawMeasure(); updateChargePanel(); drawSurface(); }
     viewer.render(); updateInfo(); updateFrameBar(); updateTrajPanel(); drawPlot();
   }
 
@@ -555,7 +626,7 @@
   window.addEventListener('dragover', e => e.preventDefault());
   window.addEventListener('drop', e => { e.preventDefault(); depth = 0; document.body.classList.remove('dragging'); if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
 
-  ['style', 'labels', 'hide-h', 'contacts', 'cutoff', 'solvent', 'near-r', 'q-set', 'q-show', 'q-scale'].forEach(id => { $(id).onchange = () => render(false); });
+  ['style', 'labels', 'label-size', 'hide-h', 'contacts', 'cutoff', 'solvent', 'near-r', 'q-set', 'q-show', 'q-scale', 'surf', 'surf-grad', 'surf-unit', 'surf-op', 'surf-min', 'surf-max'].forEach(id => { $(id).onchange = () => render(false); });
   $('dark').onchange = () => { viewer.setBackgroundColor(dark() ? 'black' : 'white'); render(false); };
   $('spin').onchange = e => viewer.spin(e.target.checked ? 'y' : false);
   $('reset-view').onclick = () => { viewer.zoomTo(cur && cur.topo && cur.topo.hasSolvent ? { index: cur.topo.solute } : {}); viewer.render(); };
@@ -582,7 +653,7 @@
   window.addEventListener('resize', () => { viewer.resize(); viewer.render(); drawPlot(); });
 
   function download(name, href) { const a = document.createElement('a'); a.href = href; a.download = name; document.body.append(a); a.click(); a.remove(); }
-  $('save-png').onclick = () => { if (cur) download(cur.name.replace(/\.[^.]+$/, '') + '.png', viewer.pngURI()); };
+  $('save-png').onclick = savePNG;
   $('save-xyz').onclick = () => {                                     // what is on screen (solute + shown waters)
     if (!cur) return; const many = nF(cur) > 1;
     const text = MolParsers.xyzText(vis.map(a => ({ el: a.elem, x: a.x, y: a.y, z: a.z })), cur.name + (many ? ' frame ' + (cur.i + 1) : ''));

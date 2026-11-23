@@ -8,10 +8,11 @@ A small molecule viewer that runs entirely in the browser. Drop a structure file
 
 - **Open files** by drag-and-drop or the file picker; several files can be open at once.
 - **Formats:** `.xyz` (multi-frame), Tinker `.xyz` / `.txyz` / `.arc`, `.pdb`, `.sdf` / `.mol`, `.mol2`, `.pqr`, `.gro`, `.cif` (mmCIF), `.cube`, Gaussian output `.log` / `.out` (every optimisation step becomes a frame, with its SCF energy) and Gaussian input `.gjf` / `.com` (Cartesian).
-- **Display:** ball and stick, stick, line, space filling, cartoon; element / atom-number labels; hide hydrogens; dark background; spin.
+- **Display:** ball and stick, stick, line, space filling, cartoon; element / atom-number labels with adjustable size; hide hydrogens; dark background; spin.
 - **Measure:** pick the tool (Distance, Angle or Dihedral), then click 2, 3 or 4 atoms. Each measurement stays on screen and in a list, so you can keep several at once and remove them one by one. They follow the atoms when you change frame, and **Copy** puts them on the clipboard as a table with one row per frame (also for trajectories).
 - **Polar contacts:** dashed lines and distances for H···N/O contacts below a cut-off (H bonded to N or O, acceptor at least three bonds away). Contacts between different molecules are blue, intramolecular ones red.
 - **Charges:** per-atom charges as labels and as a red – white – blue colouring. Several charge sets can be loaded for the same structure and shown as a difference (set 2 − set 1); **Copy table** gives all sets side by side.
+- **ESP surface:** a translucent van der Waals (or solvent-accessible) surface coloured by the electrostatic potential of the atomic charges, with a colour legend (rainbow red − … blue +, or red – white – blue; kcal/mol or kJ/mol; adjustable range and opacity). **Save PNG** draws the legend into the picture. The potential is that of the point charges only: for a multipole model the atomic dipoles and quadrupoles are not included.
 - **Trajectories:** add a `.dcd` file (OpenMM, NAMD, CHARMM) to an open structure. Frames are read on demand, so long trajectories are fine. In a solvated system the view shows the solute and the water molecules near it (periodic images are handled), and the solute stays centred.
 - **Energy and contact plots:** add an energy table (`.csv`) and the energy is plotted against time under the viewer; click the plot to jump to that frame. **Scan contacts** counts the H···N/O contacts in every frame (between molecules and intramolecular) and plots them; **Copy table** gives time, energy and counts per frame. Gaussian optimisations and scans get an energy-per-frame plot automatically.
 - **Frames:** slider, play / pause, ← / → keys.
@@ -65,11 +66,12 @@ To add a structure format, write a function in `js/parsers.js` that returns fram
 - Orbitals and densities from `.cube` files as isosurfaces
 - Edit a dihedral and export the new geometry
 - Vibrational modes from Gaussian frequency jobs
-- Atomic dipoles as arrows
+- Atomic dipoles as arrows, and the full multipole potential on the ESP surface
+- ESP surface from a QM potential `.cube` file
 
 ## 中文簡介
 
-在瀏覽器裡看分子結構的小工具:把 `.xyz`、`.pdb`、Gaussian `.log` 等檔案拖進頁面就能看,不用安裝、檔案也不會上傳。可以量距離/鍵角/二面角、顯示 H···N/O 接觸(分子間藍色、分子內紅色)、顯示原子電荷(標籤 + 紅白藍著色,可比較兩組電荷的差)、播放 MD 軌跡(`.dcd`,溶液只顯示溶質與附近的水)、畫能量對時間的圖(點圖跳到該幀)、逐幀統計氫鍵數,並匯出 PNG 或 `.xyz`。
+在瀏覽器裡看分子結構的小工具:把 `.xyz`、`.pdb`、Gaussian `.log` 等檔案拖進頁面就能看,不用安裝、檔案也不會上傳。可以量距離/鍵角/二面角、顯示 H···N/O 接觸(分子間藍色、分子內紅色)、顯示原子電荷(標籤 + 紅白藍著色,可比較兩組電荷的差)、畫 ESP 表面(由原子電荷算靜電位,附色階圖例)、播放 MD 軌跡(`.dcd`,溶液只顯示溶質與附近的水)、畫能量對時間的圖(點圖跳到該幀)、逐幀統計氫鍵數,並匯出 PNG 或 `.xyz`。
 
 ## License
 
