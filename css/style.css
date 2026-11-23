@@ -1,0 +1,57 @@
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --line: #d9dce1; --text: #1f283d; --muted: #6b7280;
+  --accent: #1f4e79; --accent-text: #ffffff; --warn: #c00000;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif; font-size: 14px; color: var(--text); background: var(--bg); display: flex; flex-direction: column; }
+
+header { display: flex; align-items: baseline; gap: 14px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 18px; margin: 0; }
+header .sub { color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+header .gh { color: var(--accent); text-decoration: none; font-weight: 600; }
+
+main { flex: 1; display: grid; grid-template-columns: 250px minmax(0, 1fr) 270px; gap: 10px; padding: 10px; min-height: 0; }
+aside { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; min-height: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+
+.btn { display: inline-block; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text); font: inherit; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); width: 100%; text-align: center; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+button.link { border: 0; background: none; color: var(--accent); padding: 0 4px; font: inherit; cursor: pointer; text-decoration: underline; }
+.samples { margin: 8px 0; color: var(--muted); }
+.hint { color: var(--muted); font-size: 12px; margin: 6px 0; }
+
+#file-list { list-style: none; margin: 8px 0 0; padding: 0; }
+#file-list li { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 6px; cursor: pointer; }
+#file-list li:hover { background: #eef1f5; }
+#file-list li.active { background: #dde7f2; font-weight: 600; }
+#file-list .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#file-list .tag { color: var(--muted); font-size: 11px; font-weight: 400; }
+#file-list .x { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 14px; }
+#file-list .x:hover { color: var(--warn); }
+
+.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
+.row select, .row input[type=number] { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; max-width: 150px; }
+.check { display: block; margin: 6px 0; cursor: pointer; }
+.list { font-family: Consolas, "Courier New", monospace; font-size: 13px; line-height: 1.5; white-space: pre-wrap; margin: 6px 0; }
+#info { line-height: 1.6; }
+#hover { margin-top: 6px; color: var(--muted); min-height: 1.4em; font-family: Consolas, "Courier New", monospace; font-size: 12px; }
+
+#stage { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; min-height: 320px; }
+#viewer { position: absolute; inset: 0; }
+#frame-bar { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255, 255, 255, .92); border: 1px solid var(--line); border-radius: 8px; z-index: 5; }
+#frame-bar[hidden] { display: none; }
+#frame-bar button { border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 3px 8px; cursor: pointer; }
+#fr-slider { flex: 1; }
+#fr-label { font-family: Consolas, monospace; font-size: 12px; min-width: 190px; text-align: right; }
+#drop-overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; font-size: 22px; font-weight: 600; color: var(--accent); background: rgba(221, 231, 242, .85); border: 3px dashed var(--accent); border-radius: 8px; z-index: 10; pointer-events: none; }
+body.dragging #drop-overlay { display: flex; }
+
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; grid-auto-rows: min-content; overflow-y: auto; }
+  #stage { height: 60vh; order: -1; }
+  aside { overflow: visible; }
+}
