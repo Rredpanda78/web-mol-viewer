@@ -626,7 +626,12 @@
   window.addEventListener('dragover', e => e.preventDefault());
   window.addEventListener('drop', e => { e.preventDefault(); depth = 0; document.body.classList.remove('dragging'); if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
 
-  ['style', 'labels', 'label-size', 'hide-h', 'contacts', 'cutoff', 'solvent', 'near-r', 'q-set', 'q-show', 'q-scale', 'surf', 'surf-grad', 'surf-unit', 'surf-op', 'surf-min', 'surf-max'].forEach(id => { $(id).onchange = () => render(false); });
+  let pend = null; const soon = () => { clearTimeout(pend); pend = setTimeout(() => render(false), 120); };
+  ['style', 'labels', 'label-size', 'hide-h', 'contacts', 'cutoff', 'solvent', 'near-r', 'q-set', 'q-show', 'q-scale', 'surf', 'surf-grad', 'surf-unit', 'surf-op', 'surf-min', 'surf-max'].forEach(id => {
+    const el = $(id); if (!el) return;                                   // an older cached page may not have the newer controls
+    el.onchange = soon;
+    if (el.tagName === 'INPUT' && (el.type === 'number' || el.type === 'range')) el.oninput = soon;     // react while typing / dragging, not only on Enter
+  });
   $('dark').onchange = () => { viewer.setBackgroundColor(dark() ? 'black' : 'white'); render(false); };
   $('spin').onchange = e => viewer.spin(e.target.checked ? 'y' : false);
   $('reset-view').onclick = () => { viewer.zoomTo(cur && cur.topo && cur.topo.hasSolvent ? { index: cur.topo.solute } : {}); viewer.render(); };
