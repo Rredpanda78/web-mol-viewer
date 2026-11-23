@@ -89,9 +89,18 @@
 
     <div class="panel">
       <h2>Measure</h2>
-      <p class="hint">Click atoms: 2 = distance, 3 = angle, 4 = dihedral. Esc clears.</p>
-      <div id="measure" class="list">No atoms picked.</div>
-      <button class="btn" id="clear-measure">Clear</button>
+      <div class="seg" id="mode">
+        <button data-mode="distance" class="on">Distance</button>
+        <button data-mode="angle">Angle</button>
+        <button data-mode="dihedral">Dihedral</button>
+      </div>
+      <p class="hint" id="measure-hint">Click 2 atoms in the structure.</p>
+      <ul id="measure-list"></ul>
+      <div class="btn-row">
+        <button class="btn" id="undo-pick" title="Remove the last picked atom (Esc clears all picks)">Undo pick</button>
+        <button class="btn" id="copy-measure" title="Copy the measurements; with several frames, one row per frame">Copy</button>
+        <button class="btn" id="clear-measure">Clear all</button>
+      </div>
     </div>
   </aside>
 </main>

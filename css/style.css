@@ -40,6 +40,18 @@ button.link { border: 0; background: none; color: var(--accent); padding: 0 4px;
 #info { line-height: 1.6; }
 #hover { margin-top: 6px; color: var(--muted); min-height: 1.4em; font-family: Consolas, "Courier New", monospace; font-size: 12px; }
 
+.seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { flex: 1; border: 0; border-right: 1px solid var(--line); background: #fff; color: var(--text); font: inherit; padding: 6px 4px; cursor: pointer; }
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--accent); color: var(--accent-text); }
+#measure-list { list-style: none; margin: 6px 0 0; padding: 0; font-family: Consolas, "Courier New", monospace; font-size: 13px; }
+#measure-list li { display: flex; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px dotted var(--line); }
+#measure-list .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+#measure-list .what { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#measure-list .val { font-weight: 700; }
+#measure-list .x { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 14px; }
+#measure-list .x:hover { color: var(--warn); }
+
 #stage { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; min-height: 320px; }
 #viewer { position: absolute; inset: 0; }
 #frame-bar { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255, 255, 255, .92); border: 1px solid var(--line); border-radius: 8px; z-index: 5; }

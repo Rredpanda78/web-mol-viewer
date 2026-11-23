@@ -7,8 +7,11 @@
   const files = [];            // { name, kind, frames, i }
   let cur = null;              // active entry
   let atoms = [];              // atoms of the frame on screen
-  let picked = [];             // atom indices picked for measuring
+  let picked = [];             // atom indices picked so far for the measurement being made
+  let mode = 'distance';       // measuring tool: distance (2 atoms), angle (3), dihedral (4)
   let timer = null;
+  const NEED = { distance: 2, angle: 3, dihedral: 4 };
+  const MCOL = { distance: '#1f4e79', angle: '#2e7d32', dihedral: '#7030a0' };
 
   const STYLE = {
     ballstick: { stick: { radius: 0.14, colorscheme: 'Jmol' }, sphere: { scale: 0.27, colorscheme: 'Jmol' } },
@@ -90,16 +93,56 @@
     box.textContent = C.length ? C.map(c => `${tag(c.d)}–${tag(c.h)}···${tag(c.y)}  ${c.r.toFixed(2)} Å  ${c.ang.toFixed(0)}°`).join('\n') : `No contact below ${cut.toFixed(1)} Å.`;
   }
 
+  /* value of one measurement for a list of atoms ({x, y, z}); null if an atom is missing */
+  function measureValue(m, A) {
+    const P = m.idx.map(i => A[i]); if (P.some(p => !p)) return null;
+    return m.type === 'distance' ? dist(P[0], P[1]) : m.type === 'angle' ? angle(P[0], P[1], P[2]) : dihedral(P[0], P[1], P[2], P[3]);
+  }
+  const fmtValue = (m, v) => v === null ? '—' : m.type === 'distance' ? v.toFixed(3) + ' Å' : v.toFixed(1) + '°';
+  const measureName = m => m.idx.map(i => atoms[i] ? tag(atoms[i]) : '?').join('–');
+
   function drawMeasure() {
-    const P = picked.map(i => atoms[i]).filter(Boolean); const box = $('measure');
-    if (!P.length) { box.textContent = 'No atoms picked.'; return; }
+    const ul = $('measure-list'); ul.innerHTML = '';
+    const P = picked.map(i => atoms[i]).filter(Boolean);
     P.forEach(a => viewer.addSphere({ center: { x: a.x, y: a.y, z: a.z }, radius: 0.45, color: '#f5b400', opacity: 0.55 }));
-    for (let i = 0; i + 1 < P.length; i++) dashed(P[i], P[i + 1], '#1f4e79');
-    const lines = ['Picked: ' + P.map(tag).join(' – ')];
-    if (P.length >= 2) { const r = dist(P[0], P[1]); lines.push('Distance  ' + r.toFixed(3) + ' Å'); if (P.length === 2) label(r.toFixed(3) + ' Å', mid(P[0], P[1]), '#1f4e79'); }
-    if (P.length >= 3) { const t = angle(P[0], P[1], P[2]); lines.push('Angle     ' + t.toFixed(1) + '°'); if (P.length === 3) label(t.toFixed(1) + '°', P[1], '#1f4e79'); }
-    if (P.length === 4) { const t = dihedral(P[0], P[1], P[2], P[3]); lines.push('Dihedral  ' + t.toFixed(1) + '°'); label(t.toFixed(1) + '°', mid(P[1], P[2]), '#1f4e79'); }
-    box.textContent = lines.join('\n');
+    for (let i = 0; i + 1 < P.length; i++) dashed(P[i], P[i + 1], '#f5b400');
+    const need = NEED[mode];
+    $('measure-hint').textContent = !cur ? 'Open a structure first.' :
+      P.length ? `Picked ${P.map(tag).join(' – ')} (${P.length} of ${need}).` : `Click ${need} atoms in the structure.`;
+    if (!cur) return;
+    cur.measures.forEach((m, k) => {
+      const A = m.idx.map(i => atoms[i]); const v = measureValue(m, atoms); const c = MCOL[m.type];
+      if (v !== null) {
+        for (let i = 0; i + 1 < A.length; i++) dashed(A[i], A[i + 1], c);
+        const at = m.type === 'distance' ? mid(A[0], A[1]) : m.type === 'angle' ? { x: (A[0].x + 2 * A[1].x + A[2].x) / 4, y: (A[0].y + 2 * A[1].y + A[2].y) / 4, z: (A[0].z + 2 * A[1].z + A[2].z) / 4 } : mid(A[1], A[2]);
+        label(fmtValue(m, v), at, c);
+      }
+      const li = document.createElement('li');
+      const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = c;
+      const what = document.createElement('span'); what.className = 'what'; what.textContent = measureName(m); what.title = m.type + ' ' + measureName(m);
+      const val = document.createElement('span'); val.className = 'val'; val.textContent = fmtValue(m, v);
+      const x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.title = 'Remove';
+      x.onclick = () => { cur.measures.splice(k, 1); render(false); };
+      li.append(dot, what, val, x); ul.append(li);
+    });
+  }
+
+  /* coordinates of every frame (only for frames this page built itself, i.e. XYZ text) */
+  function frameAtoms(f) {
+    if (f.format !== 'xyz') return null;
+    const L = f.data.split('\n'); const n = parseInt(L[0], 10);
+    return L.slice(2, 2 + n).map(l => { const p = l.trim().split(/\s+/); return { x: +p[1], y: +p[2], z: +p[3] }; });
+  }
+  function measureTable() {
+    if (!cur || !cur.measures.length) return '';
+    const head = cur.measures.map(m => m.type + ' ' + measureName(m) + (m.type === 'distance' ? ' (A)' : ' (deg)'));
+    if (cur.frames.length < 2) return head.map((h, k) => h + '\t' + (measureValue(cur.measures[k], atoms) ?? NaN).toFixed(4)).join('\n');
+    const rows = [['frame'].concat(head).join('\t')];
+    cur.frames.forEach((f, i) => {
+      const A = i === cur.i ? atoms : frameAtoms(f);
+      rows.push([i + 1].concat(cur.measures.map(m => A ? (measureValue(m, A) ?? NaN).toFixed(4) : '')).join('\t'));
+    });
+    return rows.join('\n');
   }
 
   function formula() {
@@ -129,13 +172,18 @@
         () => { $('hover').textContent = ''; });
       drawLabels(); drawContacts(); drawMeasure();
       if (resetView) viewer.zoomTo();
-    } else { $('contact-list').textContent = ''; $('measure').textContent = 'No atoms picked.'; }
+    } else { $('contact-list').textContent = ''; drawMeasure(); }
     viewer.render(); updateInfo(); updateFrameBar();
   }
 
   function pick(i) {
-    if (picked.length >= 4) picked = [];
     if (picked.includes(i)) picked = picked.filter(x => x !== i); else picked.push(i);
+    if (cur && picked.length === NEED[mode]) { cur.measures.push({ type: mode, idx: picked.slice() }); picked = []; }     // enough atoms: keep the measurement
+    render(false);
+  }
+  function setMode(m) {
+    mode = m; picked = [];
+    document.querySelectorAll('#mode button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
     render(false);
   }
 
@@ -171,7 +219,7 @@
   function addText(name, text) {
     try {
       const r = MolParsers.parse(name, text);
-      const entry = { name, kind: r.kind, frames: r.frames, i: r.frames.length - 1 };     // multi-frame files open on the last frame (final geometry)
+      const entry = { name, kind: r.kind, frames: r.frames, i: r.frames.length - 1, measures: [] };     // multi-frame files open on the last frame (final geometry)
       files.push(entry); select(entry);
     } catch (err) { alert(name + '\n' + err.message); }
   }
@@ -190,7 +238,15 @@
   $('dark').onchange = () => { viewer.setBackgroundColor(dark() ? 'black' : 'white'); render(false); };
   $('spin').onchange = e => viewer.spin(e.target.checked ? 'y' : false);
   $('reset-view').onclick = () => { viewer.zoomTo(); viewer.render(); };
-  $('clear-measure').onclick = () => { picked = []; render(false); };
+  $('clear-measure').onclick = () => { picked = []; if (cur) cur.measures = []; render(false); };
+  $('undo-pick').onclick = () => { picked.pop(); render(false); };
+  document.querySelectorAll('#mode button').forEach(b => { b.onclick = () => setMode(b.dataset.mode); });
+  $('copy-measure').onclick = () => {
+    const t = measureTable(); if (!t) return;
+    const done = () => { $('copy-measure').textContent = 'Copied'; setTimeout(() => { $('copy-measure').textContent = 'Copy'; }, 1200); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, () => window.prompt('Copy the measurements:', t));
+    else window.prompt('Copy the measurements:', t);
+  };
   $('fr-prev').onclick = () => { play(false); setFrame(cur.i - 1); };
   $('fr-next').onclick = () => { play(false); setFrame(cur.i + 1); };
   $('fr-play').onclick = () => play(!timer);
@@ -212,5 +268,6 @@
   };
 
   render(true);
-  window.__molviewer = { addText, viewer, state: () => ({ files: files.map(f => f.name), atoms: atoms.length, picked, frame: cur ? cur.i : null }) };   // for debugging / automated checks
+  window.__molviewer = { addText, viewer, pick, setMode, measureTable,
+    state: () => ({ files: files.map(f => f.name), atoms: atoms.length, picked, mode, measures: cur ? cur.measures : [], frame: cur ? cur.i : null }) };   // for debugging / automated checks
 })();

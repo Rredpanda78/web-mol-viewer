@@ -9,7 +9,7 @@ A small molecule viewer that runs entirely in the browser. Drop a structure file
 - **Open files** by drag-and-drop or the file picker; several files can be open at once.
 - **Formats:** `.xyz` (multi-frame), Tinker `.xyz` / `.txyz` / `.arc`, `.pdb`, `.sdf` / `.mol`, `.mol2`, `.gro`, `.cif` (mmCIF), `.cube`, Gaussian output `.log` / `.out` (every optimisation step becomes a frame, with its SCF energy) and Gaussian input `.gjf` / `.com` (Cartesian).
 - **Display:** ball and stick, stick, line, space filling, cartoon; element / atom-number labels; hide hydrogens; dark background; spin.
-- **Measure:** click 2 atoms for a distance, 3 for an angle, 4 for a dihedral. The picked atoms are kept when you change frame, so you can follow a dihedral through an optimisation or a scan.
+- **Measure:** pick the tool (Distance, Angle or Dihedral), then click 2, 3 or 4 atoms. Each measurement stays on screen and in a list, so you can keep several at once and remove them one by one. They follow the atoms when you change frame, and **Copy** puts them on the clipboard as a table with one row per frame (handy for scans and optimisations).
 - **Polar contacts:** dashed lines and distances for H···N/O contacts below a cut-off (H bonded to N or O, acceptor at least three bonds away).
 - **Frames:** slider, play / pause, ← / → keys.
 - **Export:** PNG picture of the view, or the current frame as `.xyz`.
@@ -47,7 +47,7 @@ To add a format, write a function in `js/parsers.js` that returns frames (`{ dat
 
 ## 中文簡介
 
-在瀏覽器裡看分子結構的小工具:把 `.xyz`、`.pdb`、Gaussian `.log` 等檔案拖進頁面就能看,不用安裝、檔案也不會上傳。可以量距離/鍵角/二面角、顯示 H···N/O 接觸、播放多幀(最佳化每一步),並匯出 PNG 或 `.xyz`。
+在瀏覽器裡看分子結構的小工具:把 `.xyz`、`.pdb`、Gaussian `.log` 等檔案拖進頁面就能看,不用安裝、檔案也不會上傳。可以選距離/鍵角/二面角工具後點原子量測(多筆同時保留,可複製成每幀一列的表)、顯示 H···N/O 接觸、播放多幀(最佳化每一步),並匯出 PNG 或 `.xyz`。
 
 ## License
 
