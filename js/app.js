@@ -254,15 +254,15 @@
   }
 
   /* ---------- per-frame data: time, energy, tables ---------- */
-  /* frame -> row of the energy table. DCD files written after an equilibration carry a step offset, so when the
-     header steps run past the table, frames are taken as evenly spaced from the start of the table instead. */
+  /* frame -> row of the energy table. The step counter in a DCD header can carry an offset (equilibration, restarts),
+     so when the header steps do not fall inside the table, the last frame is lined up with the last row instead. */
   function energyRow(e, i) {
     const E = e.energy; if (!E) return -1;
     const near = (arr, v) => { let lo = 0, hi = arr.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (arr[m] < v) lo = m; else hi = m; } return Math.abs(arr[lo] - v) <= Math.abs(arr[hi] - v) ? lo : hi; };
     if (e.traj && E.step) {
-      const t = e.traj; const last = E.step[E.n - 1];
-      const fits = MolTraj.frameStep(t, t.nframes - 1) <= last * 1.0001;
-      return near(E.step, fits ? MolTraj.frameStep(t, i) : (i + 1) * t.nsavc);
+      const t = e.traj; const first = E.step[0], last = E.step[E.n - 1];
+      const fits = MolTraj.frameStep(t, t.nframes - 1) <= last * 1.0001 && MolTraj.frameStep(t, 0) >= first - t.nsavc;
+      return near(E.step, fits ? MolTraj.frameStep(t, i) : last - (t.nframes - 1 - i) * t.nsavc);
     }
     if (e.traj && E.t) return near(E.t, MolTraj.frameTime(e.traj, i));
     const n = nF(e); return n > 1 ? Math.round(i * (E.n - 1) / (n - 1)) : 0;
