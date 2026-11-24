@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Web Mol Viewer</title>
-<link rel="stylesheet" href="css/style.css?v=20261123f">
+<link rel="stylesheet" href="css/style.css?v=20261124a">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.4.2/3Dmol-min.js"></script>
 </head>
 <body>
@@ -28,7 +28,7 @@
       </div>
       <ul id="file-list"></ul>
       <p class="hint" id="empty-hint">Structures: .xyz (multi-frame, Tinker), .pdb, .sdf/.mol, .mol2, .pqr, .gro, .cif, .cube, Gaussian .log/.out (all optimisation steps) and .gjf/.com.</p>
-      <p class="hint">Add to the selected structure: a trajectory (.dcd), an energy table (.csv) or charges (OpenMM .xml, GROMACS .itp, Tinker .key, .chg / one value per line).</p>
+      <p class="hint">Add to the selected structure: a trajectory (.dcd), an energy table (.csv) or charges (OpenMM .xml — with its dipoles and quadrupoles for a multipole force field, GROMACS .itp, Tinker .key, .chg / one value per line).</p>
     </div>
     <div class="panel" id="info-panel">
       <h2>Info</h2>
@@ -160,6 +160,12 @@
         </select>
       </label>
       <div id="surf-rows" hidden>
+        <label class="row" id="surf-src-row" hidden>Potential from
+          <select id="surf-src">
+            <option value="full">Full multipoles</option>
+            <option value="mono">Monopoles only</option>
+          </select>
+        </label>
         <label class="row">Colours
           <select id="surf-grad">
             <option value="rainbow">Rainbow (red − … blue +)</option>
@@ -200,9 +206,10 @@
   </aside>
 </main>
 
-<script src="js/parsers.js?v=20261123f"></script>
-<script src="js/trajectory.js?v=20261123f"></script>
-<script src="js/charges.js?v=20261123f"></script>
-<script src="js/app.js?v=20261123f"></script>
+<script src="js/parsers.js?v=20261124a"></script>
+<script src="js/trajectory.js?v=20261124a"></script>
+<script src="js/multipole.js?v=20261124a"></script>
+<script src="js/charges.js?v=20261124a"></script>
+<script src="js/app.js?v=20261124a"></script>
 </body>
 </html>

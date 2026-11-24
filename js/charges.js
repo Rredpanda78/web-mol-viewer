@@ -1,5 +1,6 @@
 /* Web Mol Viewer — read atomic charges for a structure that is already open.
- *   MolCharges.parse(name, text, atoms, types) -> { q: [number | null per atom], note }
+ *   MolCharges.parse(name, text, atoms, types) -> { q: [number | null per atom], note, mp }
+ *     mp = atomic dipoles / quadrupoles with their local frames (see multipole.js), or null; OpenMM AmoebaMultipoleForce XML only
  *     atoms = [{ elem, atom (name), resn, resi, chain }] in structure order; types = Tinker atom types (or null)
  * Supported: OpenMM force-field XML (Multipole c0, NonbondedForce charge, residue-template charge),
  *            GROMACS .itp/.top ([ atoms ] section), Tinker .key/.prm (multipole / charge lines; needs a Tinker xyz),
@@ -26,15 +27,26 @@ const MolCharges = (() => {
       const c = a.getAttribute('charge'); if (c === null) return;
       if (a.getAttribute('type') !== null) typeQ[a.getAttribute('type')] = +c; else if (a.getAttribute('class') !== null) classQ[a.getAttribute('class')] = +c;
     });
-    doc.querySelectorAll('AmoebaMultipoleForce > Multipole').forEach(m => { typeQ[m.getAttribute('type')] = +m.getAttribute('c0'); });   // multipole monopole wins
+    const typeMP = {};
+    doc.querySelectorAll('AmoebaMultipoleForce > Multipole').forEach(m => {                                                    // multipole monopole wins
+      const g = k => +(m.getAttribute(k) || 0); const ty = m.getAttribute('type'); typeQ[ty] = g('c0');
+      typeMP[ty] = { k: ['kz', 'kx', 'ky'].map(a => (m.getAttribute(a) || '').trim()), d: [g('d1'), g('d2'), g('d3')],
+        q: [g('q11'), g('q21'), g('q31'), g('q21'), g('q22'), g('q32'), g('q31'), g('q32'), g('q33')] };
+    });
     const tmpl = [];
     doc.querySelectorAll('Residues > Residue').forEach(r => {
       const A = Array.from(r.querySelectorAll('Atom')).map(a => {
         const ty = a.getAttribute('type'); const own = a.getAttribute('charge');
         const q = ty in typeQ ? typeQ[ty] : classOf[ty] in classQ ? classQ[classOf[ty]] : own !== null ? +own : null;
-        return { name: a.getAttribute('name'), el: typeEl[ty] || '', q };
+        return { name: a.getAttribute('name'), el: typeEl[ty] || '', q, ty };
       });
-      tmpl.push({ name: r.getAttribute('name'), atoms: A });
+      const at = {}; A.forEach((a, k) => { at[a.name] = k; }); const adj = A.map(() => []);
+      r.querySelectorAll('Bond').forEach(b => {
+        const n1 = b.getAttribute('atomName1'), n2 = b.getAttribute('atomName2');
+        const u = n1 !== null ? at[n1] : +b.getAttribute('from'), v = n2 !== null ? at[n2] : +b.getAttribute('to');
+        if (adj[u] && adj[v]) { adj[u].push(v); adj[v].push(u); }
+      });
+      tmpl.push({ name: r.getAttribute('name'), atoms: A, adj });
     });
     if (!tmpl.length) throw new Error('No <Residue> templates in this XML');
     const q = new Array(atoms.length).fill(null); const elems = new Array(atoms.length).fill('');
@@ -48,6 +60,29 @@ const MolCharges = (() => {
       const names = R.map(a => a.atom).sort().join(' ');
       return tmpl.find(t => t.atoms.length === R.length && t.atoms.map(x => x.name).sort().join(' ') === names) || null;
     };
+    /* dipoles and quadrupoles: unit change (nm -> Å) and the atoms that define each local frame.
+       The force field names the frame atoms by type; in the residue it is the nearest bonded atom of that type. */
+    const N = atoms.length; let mpAtoms = 0, mpLost = 0;
+    const mp = Object.keys(typeMP).length ? { d: new Float64Array(3 * N), Q: new Float64Array(9 * N), ax: new Int32Array(3 * N).fill(-1), type: new Uint8Array(N).fill(MolMultipole.NOAXIS) } : null;
+    const place = (t, map) => {                                 // map[template atom] = atom of the structure
+      if (!mp) return;
+      t.atoms.forEach((x, ti) => {
+        const k = map[ti], M = typeMP[x.ty]; if (k === undefined || !M || !(M.d.some(v => v) || M.q.some(v => v))) return;
+        const dist = new Array(t.atoms.length).fill(Infinity); dist[ti] = 0; const queue = [ti];
+        for (const u of queue) for (const v of t.adj[u]) if (dist[v] === Infinity) { dist[v] = dist[u] + 1; queue.push(v); }
+        const sgn = M.k.map(c => (c === '' || c === '0' ? 0 : c[0] === '-' ? -1 : 1)); const want = M.k.map(c => (c[0] === '-' ? c.slice(1) : c));
+        const ax = [-1, -1, -1]; const taken = [ti]; let ok = true;
+        sgn.forEach((sg, j) => {
+          if (!sg) return; let best = -1;
+          t.atoms.forEach((y, c) => { if (y.ty === want[j] && !taken.includes(c) && map[c] !== undefined && (best < 0 || dist[c] < dist[best])) best = c; });
+          if (best < 0) { ok = false; return; }
+          taken.push(best); ax[j] = map[best];
+        });
+        if (!ok) { mpLost++; return; }
+        mp.type[k] = MolMultipole.axisType(sgn[0], sgn[1], sgn[2]); mp.ax.set(ax, 3 * k);
+        mp.d.set(M.d.map(v => 10 * v), 3 * k); mp.Q.set(M.q.map(v => 100 * v), 9 * k); mpAtoms++;
+      });
+    };
     const hasRes = atoms.some(a => a.resn);
     let used = [];
     if (hasRes) {                                               // residue by residue: match atom names, else order inside the residue
@@ -60,7 +95,9 @@ const MolCharges = (() => {
           if (!used.includes(t.name)) used.push(t.name);
           const names = {}; t.atoms.forEach(x => { names[x.name] = x; });
           const allNamed = atoms.slice(i, j).every(a => names[a.atom]);
-          for (let k = i; k < j; k++) { const x = allNamed ? names[atoms[k].atom] : t.atoms[k - i]; if (x) { q[k] = x.q; elems[k] = x.el; } }
+          const map = {};
+          for (let k = i; k < j; k++) { const x = allNamed ? names[atoms[k].atom] : t.atoms[k - i]; if (x) { q[k] = x.q; elems[k] = x.el; map[t.atoms.indexOf(x)] = k; } }
+          place(t, map);
         }
         i = j;
       }
@@ -68,10 +105,11 @@ const MolCharges = (() => {
     if (!used.length) {                                         // no residue matched (xyz, other residue names): template with the same number of atoms, else the first
       const t = tmpl.find(x => x.atoms.length === atoms.length) || tmpl[0];
       if (t.atoms.length !== atoms.length) throw new Error(`Template ${t.name} has ${t.atoms.length} atoms, the structure has ${atoms.length}`);
-      t.atoms.forEach((x, k) => { q[k] = x.q; elems[k] = x.el; }); used = [t.name];
+      const map = {}; t.atoms.forEach((x, k) => { q[k] = x.q; elems[k] = x.el; map[k] = k; }); place(t, map); used = [t.name];
     }
-    const mp = doc.querySelector('AmoebaMultipoleForce > Multipole') ? ' (multipole monopoles)' : '';
-    return { q, note: ['OpenMM XML' + mp + ', residue ' + used.join(', '), checkElements(q, atoms, elems, 'the XML')].filter(Boolean).join('. ') };
+    const tag = doc.querySelector('AmoebaMultipoleForce > Multipole') ? ' (multipole monopoles' + (mpAtoms ? `; ${mpAtoms} atoms also carry dipoles / quadrupoles` : '') + ')' : '';
+    const lost = mpLost ? `Warning: the local frame of ${mpLost} atom(s) could not be resolved; their dipoles / quadrupoles are left out` : '';
+    return { q, mp: mp && mpAtoms ? mp : null, note: ['OpenMM XML' + tag + ', residue ' + used.join(', '), checkElements(q, atoms, elems, 'the XML'), lost].filter(Boolean).join('. ') };
   }
 
   function fromGromacs(text, atoms) {

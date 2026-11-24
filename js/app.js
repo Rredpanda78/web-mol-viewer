@@ -125,6 +125,7 @@
   }
 
   /* ---------- charges ---------- */
+  const allXYZ = () => { const X = new Float64Array(3 * atoms.length); atoms.forEach((a, i) => { X[3 * i] = a.x; X[3 * i + 1] = a.y; X[3 * i + 2] = a.z; }); return X; };
   function activeQ() {
     if (!cur || !cur.sets.length) return null;
     const v = $('q-set').value;
@@ -153,7 +154,17 @@
     const idx = T ? T.solute : Q.map((_, i) => i);
     idx.forEach(i => { const q = Q[i]; if (q !== null && q !== undefined) { n++; s += q; sa += Math.abs(q); } });
     const note = sel.value.startsWith('d') ? 'Difference between two sets' : (cur.sets[+sel.value].note || '');
-    $('q-info').textContent = `Σq = ${signed(s, 3)} e   Σ|q| = ${sa.toFixed(3)} e   (${n} ${T && T.hasSolvent ? 'solute ' : ''}atoms)` + (note ? '\n' + note : '');
+    let dip = '';                                                 // dipole moment of a neutral molecule (charges, plus the atomic dipoles of a multipole set)
+    if (!sel.value.startsWith('d') && n > 1 && Math.abs(s) < 0.02) {
+      const ix = idx.filter(i => Q[i] !== null && Q[i] !== undefined); const S = cur.sets[+sel.value];
+      const fx = Float64Array.from(ix, i => atoms[i].x), fy = Float64Array.from(ix, i => atoms[i].y), fz = Float64Array.from(ix, i => atoms[i].z), fq = Float64Array.from(ix, i => Q[i]);
+      const D = m => (4.80321 * Math.hypot(m[0], m[1], m[2])).toFixed(2); const m0 = MolMultipole.dipole(fx, fy, fz, fq, null);
+      if (S && S.mp) {
+        const L = MolMultipole.lab(S.mp, allXYZ()); const fd = new Float64Array(3 * ix.length); ix.forEach((i, k) => { for (let c = 0; c < 3; c++) fd[3 * k + c] = L.d[3 * i + c]; });
+        dip = `\n|μ| = ${D(MolMultipole.dipole(fx, fy, fz, fq, fd))} D with the atomic dipoles (charges only: ${D(m0)} D)`;
+      } else dip = `\n|μ| = ${D(m0)} D`;
+    }
+    $('q-info').textContent = `Σq = ${signed(s, 3)} e   Σ|q| = ${sa.toFixed(3)} e   (${n} ${T && T.hasSolvent ? 'solute ' : ''}atoms)` + dip + (note ? '\n' + note : '');
     const sc = qScale(Q); $('q-legend').textContent = qShow() === 'colour' || qShow() === 'both' ? `red −${sc.toFixed(2)} … white 0 … blue +${sc.toFixed(2)} e` : '';
   }
   function chargeTable() {
@@ -163,7 +174,7 @@
     return rows.join('\n');
   }
 
-  /* ---------- electrostatic potential on the molecular surface (from the atomic charges) ---------- */
+  /* ---------- electrostatic potential on the molecular surface (atomic charges, or the full atomic multipoles) ---------- */
   const VDW = { H: 1.2, C: 1.7, N: 1.55, O: 1.52, F: 1.47, P: 1.8, S: 1.8, Cl: 1.75, Br: 1.85 };
   const COULOMB = { kcal: 332.0637, kJ: 1389.354 };                // energy of a +1 e probe charge, per (e / Å)
   let surfTok = 0;
@@ -179,7 +190,18 @@
     const unit = $('surf-unit').value; const K = COULOMB[unit]; const type = $('surf').value; const probe = type === 'SAS' ? 1.4 : 0;
     const ax = new Float64Array(n), ay = new Float64Array(n), az = new Float64Array(n), aq = new Float64Array(n), ar = new Float64Array(n);
     idx.forEach((i, k) => { const a = atoms[i]; ax[k] = a.x; ay[k] = a.y; az[k] = a.z; aq[k] = Q[i]; ar[k] = (VDW[a.elem] || 1.7) + probe; });
-    const V = (x, y, z) => { let s = 0; for (let k = 0; k < n; k++) { const dx = x - ax[k], dy = y - ay[k], dz = z - az[k]; const r = Math.sqrt(dx * dx + dy * dy + dz * dz); s += aq[k] / (r < 0.6 ? 0.6 : r); } return K * s; };
+    const sel = $('q-set').value;                                    // a multipole set brings dipoles and quadrupoles; a difference of two sets subtracts them too
+    const comps = sel.startsWith('d') ? [[cur.sets[+sel.slice(1)], 1], [cur.sets[0], -1]] : [[cur.sets[+sel] || cur.sets[0], 1]];
+    const hasMP = comps.some(c => c[0] && c[0].mp); $('surf-src-row').hidden = !hasMP; const full = hasMP && $('surf-src').value !== 'mono';
+    let aD = null, aQ = null;
+    if (full) {
+      const X = allXYZ(); aD = new Float64Array(3 * n); aQ = new Float64Array(6 * n);
+      comps.forEach(([S, sg]) => {
+        if (!S || !S.mp) return; const L = MolMultipole.lab(S.mp, X);
+        idx.forEach((i, k) => { for (let c = 0; c < 3; c++) aD[3 * k + c] += sg * L.d[3 * i + c]; for (let c = 0; c < 6; c++) aQ[6 * k + c] += sg * L.Q[6 * i + c]; });
+      });
+    }
+    const V0 = MolMultipole.potential(ax, ay, az, aq, aD, aQ, 0.6); const V = (x, y, z) => K * V0(x, y, z);
     let lo = Infinity, hi = -Infinity; const NP = 90;               // range: the potential on the surface itself (points on each atomic sphere that are outside the others)
     for (let k = 0; k < n; k++) for (let p = 0; p < NP; p++) {
       const ph = Math.acos(1 - 2 * (p + 0.5) / NP), th = Math.PI * (1 + Math.sqrt(5)) * p;
@@ -196,7 +218,7 @@
     for (let k = 0; k < n; k++) { x0 = Math.min(x0, ax[k]); x1 = Math.max(x1, ax[k]); y0 = Math.min(y0, ay[k]); y1 = Math.max(y1, ay[k]); z0 = Math.min(z0, az[k]); z1 = Math.max(z1, az[k]); }
     x0 -= mg; y0 -= mg; z0 -= mg; x1 += mg; y1 += mg; z1 += mg;
     let h = 0.2, nx, ny, nz;                                         // 3Dmol reads the nearest grid point, so the grid has to be fine
-    for (;;) { nx = Math.ceil((x1 - x0) / h) + 1; ny = Math.ceil((y1 - y0) / h) + 1; nz = Math.ceil((z1 - z0) / h) + 1; if (nx * ny * nz * n <= 4e7) break; h *= 1.12; }
+    for (;;) { nx = Math.ceil((x1 - x0) / h) + 1; ny = Math.ceil((y1 - y0) / h) + 1; nz = Math.ceil((z1 - z0) / h) + 1; if (nx * ny * nz * n <= (full ? 2e7 : 4e7)) break; h *= 1.12; }
     const data = new Float32Array(nx * ny * nz);
     for (let ix = 0; ix < nx; ix++) for (let iy = 0; iy < ny; iy++) { const o = (ix * ny + iy) * nz; const x = x0 + ix * h, y = y0 + iy * h; for (let iz = 0; iz < nz; iz++) data[o + iz] = V(x, y, z0 + iz * h); }
     const vd = new $3Dmol.VolumeData('', 'none'); vd.origin = { x: x0, y: y0, z: z0 }; vd.unit = { x: h, y: h, z: h }; vd.size = { x: nx, y: ny, z: nz }; vd.data = data;
@@ -210,10 +232,11 @@
       const tx = document.createElement('span'); tx.className = 'v'; tx.textContent = (v < 0 ? '−' : '') + Math.abs(v).toFixed(1); row.append(sw, tx); leg.append(row);
     }
     leg.hidden = false; leg.dataset.unit = unit;
-    const sel = $('q-set').value; const note = sel.startsWith('d') ? '' : ((cur.sets[+sel] || {}).note || '');
-    $('surf-info').textContent = 'Potential of the atomic point charges (energy of a +1 e probe) on the ' + (type === 'SAS' ? 'solvent-accessible' : 'van der Waals') + ' surface.'
+    const note = sel.startsWith('d') ? '' : ((cur.sets[+sel] || {}).note || '');
+    $('surf-info').textContent = (full ? 'Potential of the atomic multipoles (charges + dipoles + quadrupoles, rotated from their local frames; energy of a +1 e probe)' : 'Potential of the atomic point charges (energy of a +1 e probe)')
+      + ' on the ' + (type === 'SAS' ? 'solvent-accessible' : 'van der Waals') + ' surface.'
       + (sel.startsWith('d') ? ' Showing the difference between two charge sets.' : '')
-      + (/multipole|monopole/i.test(note) ? ' Multipole model: only the monopoles are used — atomic dipoles and quadrupoles are not included, so this is not the full model potential.' : '');
+      + (!full && (hasMP || /multipole|monopole/i.test(note)) ? ' Multipole model: only the monopoles are used — atomic dipoles and quadrupoles are not included, so this is not the full model potential.' : '');
   }
 
   /* picture of the view with the ESP legend drawn in */
@@ -597,7 +620,7 @@
   function attachCharges(name, text) {
     const e = needCur('charges'); const f = e.traj ? e.frames[0] : e.frames[e.i];
     const r = MolCharges.parse(name, text, atoms.map(a => ({ elem: a.elem, atom: (a.atom || '').trim(), resn: (a.resn || '').trim(), resi: a.resi, chain: a.chain })), f.types || null);
-    e.sets.push({ name, q: r.q, note: r.note }); $('q-set').value = ''; render(false);
+    e.sets.push({ name, q: r.q, note: r.note, mp: r.mp || null }); $('q-set').value = ''; render(false);
   }
   const extOf = n => (n.split('.').pop() || '').toLowerCase();
   const isEnergy = (name, text) => extOf(name) === 'csv' && /potential|energy|epot|step|time/i.test(text.split('\n')[0] || '');
@@ -630,7 +653,7 @@
   window.addEventListener('drop', e => { e.preventDefault(); depth = 0; document.body.classList.remove('dragging'); if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
 
   let pend = null; const soon = () => { clearTimeout(pend); pend = setTimeout(() => render(false), 120); };
-  ['style', 'labels', 'label-size', 'label-bg', 'hide-h', 'contacts', 'cutoff', 'solvent', 'near-r', 'q-set', 'q-show', 'q-scale', 'surf', 'surf-grad', 'surf-unit', 'surf-op', 'surf-min', 'surf-max'].forEach(id => {
+  ['style', 'labels', 'label-size', 'label-bg', 'hide-h', 'contacts', 'cutoff', 'solvent', 'near-r', 'q-set', 'q-show', 'q-scale', 'surf', 'surf-src', 'surf-grad', 'surf-unit', 'surf-op', 'surf-min', 'surf-max'].forEach(id => {
     const el = $(id); if (!el) return;                                   // an older cached page may not have the newer controls
     el.onchange = soon;
     if (el.tagName === 'INPUT' && (el.type === 'number' || el.type === 'range')) el.oninput = soon;     // react while typing / dragging, not only on Enter
